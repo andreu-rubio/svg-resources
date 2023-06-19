@@ -12,20 +12,39 @@ class SlackPlugin extends Plugin {
 
     var $config_class = "SlackPluginConfig";
 
+    static $pluginInstance = null;
+
+    private function getPluginInstance(?int $id) {
+        if($id && ($i = $this->getInstance($id)))
+            return $i;
+
+        return $this->getInstances()->first();
+    }
+
     /**
      * The entrypoint of the plugin, keep short, always runs.
      */
     function bootstrap() {
+        // get plugin instances
+        self::$pluginInstance = self::getPluginInstance(null);
+
+        $updateTypes = $this->getConfig(self::$pluginInstance)->get('slack-update-types');
+        
         // Listen for osTicket to tell us it's made a new ticket or updated
         // an existing ticket:
-        Signal::connect('ticket.created', array($this, 'onTicketCreated'));
-        Signal::connect('threadentry.created', array($this, 'onTicketUpdated'));
+        if($updateTypes == 'both' || $updateTypes == 'newOnly' || empty($updateTypes)) {
+            Signal::connect('ticket.created', array($this, 'onTicketCreated'));
+        }
+        
+        if($updateTypes == 'both' || $updateTypes == 'updatesOnly' || empty($updateTypes)) {
+            Signal::connect('threadentry.created', array($this, 'onTicketUpdated'));
+        }
         // Tasks? Signal::connect('task.created',array($this,'onTaskCreated'));
     }
 
     /**
      * What to do with a new Ticket?
-     *
+     * 
      * @global OsticketConfig $cfg
      * @param Ticket $ticket
      * @return type
@@ -36,6 +55,9 @@ class SlackPlugin extends Plugin {
             error_log("Slack plugin called too early.");
             return;
         }
+        
+        // if slack-update-types is "updatesOnly", then don't send this!
+        if($this->getConfig(self::$pluginInstance)->get('slack-update-types') == 'updatesOnly') {return;}
 
         // Convert any HTML in the message into text
         $plaintext = Format::html2text($ticket->getMessages()[0]->getBody()->getClean());
@@ -52,7 +74,7 @@ class SlackPlugin extends Plugin {
 
     /**
      * What to do with an Updated Ticket?
-     *
+     * 
      * @global OsticketConfig $cfg
      * @param ThreadEntry $entry
      * @return type
@@ -63,6 +85,10 @@ class SlackPlugin extends Plugin {
             error_log("Slack plugin called too early.");
             return;
         }
+        
+        // if slack-update-types is "newOnly", then don't send this!
+        if($this->getConfig(self::$pluginInstance)->get('slack-update-types') == 'newOnly') {return;}
+        
         if (!$entry instanceof MessageThreadEntry) {
             // this was a reply or a system entry.. not a message from a user
             return;
@@ -94,8 +120,8 @@ class SlackPlugin extends Plugin {
     }
 
     /**
-     * A helper function that sends messages to slack endpoints.
-     *
+     * A helper function that sends messages to slack endpoints. 
+     * 
      * @global osTicket $ost
      * @global OsticketConfig $cfg
      * @param Ticket $ticket
@@ -110,25 +136,23 @@ class SlackPlugin extends Plugin {
             error_log("Slack plugin called too early.");
             return;
         }
-        $url = $this->getConfig()->get('slack-webhook-url');
+        $url = $this->getConfig(self::$pluginInstance)->get('slack-webhook-url');
         if (!$url) {
             $ost->logError('Slack Plugin not configured', 'You need to read the Readme and configure a webhook URL before using this.');
         }
 
         // Check the subject, see if we want to filter it.
-        $regex_subject_ignore = $this->getConfig()->get('slack-regex-subject-ignore');
+        $regex_subject_ignore = $this->getConfig(self::$pluginInstance)->get('slack-regex-subject-ignore');
         // Filter on subject, and validate regex:
         if ($regex_subject_ignore && preg_match("/$regex_subject_ignore/i", $ticket->getSubject())) {
             $ost->logDebug('Ignored Message', 'Slack notification was not sent because the subject (' . $ticket->getSubject() . ') matched regex (' . htmlspecialchars($regex_subject_ignore) . ').');
             return;
-        } else {
-            error_log("$ticket_subject didn't trigger $regex_subject_ignore");
         }
 
         $heading = $this->format_text($heading);
 
-        // Pull template from config, and use that.
-        $template          = $this->getConfig()->get('message-template');
+        // Pull template from config, and use that. 
+        $template          = $this->getConfig(self::$pluginInstance)->get('message-template');
         // Add our custom var
         $custom_vars       = [
             'slack_safe_message' => $this->format_text($body),
@@ -146,7 +170,7 @@ class SlackPlugin extends Plugin {
             'title'       => $ticket->getSubject(),
             'title_link'  => $cfg->getUrl() . 'scp/tickets.php?id=' . $ticket->getId(),
             'ts'          => time(),
-            'footer'      => 'Comapany Name',
+            'footer'      => 'via osTicket Slack Plugin',
             'footer_icon' => 'https://platform.slack-edge.com/img/default_application_icon.png',
             'text'        => $formatted_message,
             'mrkdwn_in'   => ["text"]
@@ -201,7 +225,7 @@ class SlackPlugin extends Plugin {
     /**
      * Fetches a ticket from a ThreadEntry
      *
-     * @param ThreadEntry $entry
+     * @param ThreadEntry $entry        	
      * @return Ticket
      */
     function getTicket(ThreadEntry $entry) {
@@ -211,16 +235,16 @@ class SlackPlugin extends Plugin {
 
         // Force lookup rather than use cached data..
         // This ensures we get the full ticket, with all
-        // thread entries etc..
+        // thread entries etc.. 
         return Ticket::lookup(array(
                     'ticket_id' => $ticket_id
         ));
     }
 
     /**
-     * Formats text according to the
+     * Formats text according to the 
      * formatting rules:https://api.slack.com/docs/message-formatting
-     *
+     * 
      * @param string $text
      * @return string
      */

@@ -38,7 +38,6 @@ class SlackPluginConfig extends PluginConfig {
                     )),
             'slack-webhook-url'          => new TextboxField(array(
                 'label'         => $__('Webhook URL'),
-                'hint'          => $__('For Discord add "/slack" in the end of address'),
                 'configuration' => array(
                     'size'   => 100,
                     'length' => 200
@@ -47,6 +46,16 @@ class SlackPluginConfig extends PluginConfig {
             'slack-regex-subject-ignore' => new TextboxField([
                 'label'         => $__('Ignore when subject equals regex'),
                 'hint'          => $__('Auto delimited, always case-insensitive'),
+                'configuration' => [
+                    'size'   => 30,
+                    'length' => 200
+                ],
+                    ]),
+            'slack-update-types' => new ChoiceField([
+                'label'         => $__('Update Types'),
+                'hint'          => $__('What types of updates should be sent via Slack?'),
+                'choices' => array('both' => 'New & Updated Tickets', 'updatesOnly' => 'Only Ticket Updates', 'newOnly' => 'Only New Tickets'),
+                'default' => 'both',
                 'configuration' => [
                     'size'   => 30,
                     'length' => 200
